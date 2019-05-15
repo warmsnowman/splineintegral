@@ -111,7 +111,17 @@ function [nodes_x,nodes_y,weights]=splinegauss(N,control_points,...
 
 % Notation: "xi" as in the paper.
 % xi=min(control_points(:,1));;
-xi=median(control_points(:,1));
+% xi=median(control_points(:,1));
+
+
+
+%up chain and down chain.
+Npts=size(control_points,1);
+control_points_dir=zeros(Npts-1,1);
+temp=diff(control_points(:,2));
+control_points_dir(temp>0)=1;%up, the latter point is higher than the former point
+control_points_dir(temp<0)=-1;
+control_points_down=find(temp<0);%down, the latter point is lower than the former point
 
 
 %--------------------------------------------------------------------------
@@ -122,6 +132,9 @@ nodes_x=[];
 nodes_y=[];
 weights=[];
 
+
+
+ s_loc=[0;cumsum(edgeLength(control_points))];
 % Number of Blocks.
 L=size(spline_order_vett,1);
 
@@ -138,18 +151,8 @@ for block_index=1:L
     % Spline order in the block.
     spline_block_order=spline_order_vett(block_index,1);
     spline_block_degree=spline_block_order-1;
-    
-    % Control points (x_loc,y_loc) in the block.
-    pts_loc=control_points(initial_point_index:final_point_index,:);
-
-    % Parametrical description of the block.
    
-    s_loc=[0;cumsum(edgeLength(pts_loc))];
-    
-    
-    
-    
-    
+     
     % Computing the spline parametrical description of the block.  
     % "ppx", "ppy" describe S_i1, S_i2 in the paper, while "ppy1" 
     % describe S'_i2.
@@ -160,8 +163,8 @@ for block_index=1:L
         
         % CUBIC SPLINES BY CSAPE. AS DEFAULT WE USE PERIODIC CUBIC SPLINES.
         % Derivatives parameters are computed as well.
-        ppx=csape(s_loc,pts_loc(:,1),SPLtypestring);
-        ppy=csape(s_loc,pts_loc(:,2),SPLtypestring);
+        ppx=csape(s_loc(initial_point_index:final_point_index),control_points(initial_point_index:final_point_index,1),SPLtypestring);
+        ppy=csape(s_loc(initial_point_index:final_point_index),control_points(initial_point_index:final_point_index,2),SPLtypestring);
         [breaks_y,coeffs_y]=unmkpp(ppy);
         N_y=size(coeffs_y,1);
         dcoeffs_y=[zeros(N_y,1) 3*coeffs_y(:,1) 2*coeffs_y(:,2) ...
@@ -170,17 +173,14 @@ for block_index=1:L
         
     otherwise   
         
-        ppx=spapi(spline_block_order,s_loc,pts_loc(:,1));
-        ppy=spapi(spline_block_order,s_loc,pts_loc(:,2));
+        ppx=spapi(spline_block_order,s_loc(initial_point_index:final_point_index),control_points(initial_point_index:final_point_index,1));
+        ppy=spapi(spline_block_order,s_loc(initial_point_index:final_point_index),control_points(initial_point_index:final_point_index,2));
         ppy1=fnder(ppy,1);
         
     end
     
     
     
-    % Every block is subdivided in "number_of_subblocks" curves determined 
-    % by successive control points.
-    number_of_subblocks=final_point_index-initial_point_index;
     
     % Cubature rule on the square [-1,1] x [-1,1].
     % Padua Points: 0, Gauss-Legendre: 4.
@@ -191,15 +191,22 @@ for block_index=1:L
     % Computing quadrature points from a general sub-block. The cases in 
     % which the order is 2 is a little different from other spline orders. 
     % Consequently, we distinguish between them.
-    for index_control_point=1:number_of_subblocks
+    for index_control_point=initial_point_index:final_point_index-1
+        
+        if control_points_dir(index_control_point)<=0
+            %point are going down or honrizontal
+            continue;
+        end
+        
+
         
         if (spline_block_order == 2)
             
-            x1=pts_loc(index_control_point,1);
-            x2=pts_loc(index_control_point+1,1);
+            x1=control_points(index_control_point,1);
+            x2=control_points(index_control_point+1,1);
             
-            y1=pts_loc(index_control_point,2);
-            y2=pts_loc(index_control_point+1,2);
+            y1=control_points(index_control_point,2);
+            y2=control_points(index_control_point+1,2);
             
             if ~(x2 == xi && x1 == xi)
                 if ~( (y2-y1) == 0)
@@ -302,6 +309,9 @@ for block_index=1:L
     end
     
 end
+
+
+%discard the useless component.
 nodes_x(weights==0)=[];
 nodes_y(weights==0)=[];
 weights(weights==0)=[];
